@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:todoly_flutter/widgets/home_app_bar.dart';
+import 'package:todoly_flutter/widgets/task_item.dart';
+import 'package:todoly_flutter/widgets/theme_panel.dart';
 import '../models/task.dart';
 import '../providers/task_provider.dart';
-// We will create the widget for the task item and dialogs in the next steps.
 
+// The home screen, now refactored to be a clean and modular widget.
+// It acts as a conductor, orchestrating the other widgets.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -18,12 +22,15 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Listener for the search controller to update the UI state.
     _searchController.addListener(() {
       final taskProvider = Provider.of<TaskProvider>(context, listen: false);
       final query = _searchController.text;
-      setState(() {
-        _isSearching = query.isNotEmpty;
-      });
+      if (query.isNotEmpty && !_isSearching) {
+        setState(() => _isSearching = true);
+      } else if (query.isEmpty && _isSearching) {
+        setState(() => _isSearching = false);
+      }
       taskProvider.searchTasks(query);
     });
   }
@@ -36,166 +43,71 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Using a Consumer to listen to changes in TaskProvider
     return Consumer<TaskProvider>(
       builder: (context, taskProvider, child) {
-        final tasks = _isSearching ? taskProvider.searchResults : taskProvider.tasks;
+        final tasks =
+            _isSearching ? taskProvider.searchResults : taskProvider.tasks;
 
         return Scaffold(
-          // Using a CustomScrollView for a more flexible and custom UI
           body: CustomScrollView(
             slivers: [
-              _buildSliverAppBar(context, taskProvider),
-              // A little space between app bar and the list
+              // The new, modular AppBar.
+              HomeAppBar(
+                searchController: _searchController,
+                onThemePressed: () => _showThemePanel(context),
+                onDeleteAllPressed: () =>
+                    _showDeleteAllConfirmationDialog(context, taskProvider),
+              ),
               const SliverToBoxAdapter(child: SizedBox(height: 8)),
-              
-              // Show a message if the list is empty
-              if (tasks.isEmpty)
-                _buildEmptyState(),
-              
-              // Show the list of tasks
-              if (tasks.isNotEmpty)
-                _buildTasksList(tasks, taskProvider),
+
+              // Conditional UI for empty or no-result states.
+              if (tasks.isEmpty && !_isSearching) _buildEmptyState(),
+              if (tasks.isEmpty && _isSearching) _buildNoResultsState(),
+
+              // The new, modular task list.
+              if (tasks.isNotEmpty) _buildTasksList(tasks),
             ],
           ),
-          // Floating Action Button to add new tasks
           floatingActionButton: FloatingActionButton(
-            onPressed: () => _showTaskDialog(context),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            child: const Icon(Icons.add, color: Colors.white),
+            onPressed: () => _showAddTaskDialog(context, taskProvider),
+            child: const Icon(Icons.add),
           ),
         );
       },
     );
   }
 
-  SliverAppBar _buildSliverAppBar(BuildContext context, TaskProvider taskProvider) {
-    return SliverAppBar(
-      floating: true,
-      pinned: true,
-      snap: false,
-      expandedHeight: 120.0,
-      backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
-      iconTheme: const IconThemeData(color: Colors.white),
-      title: const Text('لیست وظایف'),
-      actions: [
-        // Button to delete all tasks
-        IconButton(
-          icon: const Icon(Icons.delete_sweep_outlined),
-          onPressed: () => _showDeleteAllConfirmationDialog(context, taskProvider),
-        ),
-      ],
-      // The flexible space part contains the search bar
-      flexibleSpace: FlexibleSpaceBar(
-        background: Padding(
-          padding: const EdgeInsets.only(top: 90.0, left: 16.0, right: 16.0, bottom: 8.0),
-          child: _buildSearchField(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSearchField() {
-    return TextField(
-      controller: _searchController,
-      decoration: InputDecoration(
-        hintText: 'جستجو در وظایف...',
-        prefixIcon: const Icon(Icons.search, size: 20),
-        filled: true,
-        fillColor: Theme.of(context).scaffoldBackgroundColor,
-        contentPadding: const EdgeInsets.symmetric(vertical: 0),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30.0),
-          borderSide: BorderSide.none,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return const SliverFillRemaining(
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.check_circle_outline, size: 80, color: Colors.grey),
-            SizedBox(height: 16),
-            Text(
-              'هیچ وظیفه‌ای برای نمایش وجود ندارد!',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-            Text(
-              'یک وظیفه جدید اضافه کنید',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTasksList(List<Task> tasks, TaskProvider taskProvider) {
+  // Builds the list of tasks using the new TaskItem widget.
+  Widget _buildTasksList(List<Task> tasks) {
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
           final task = tasks[index];
-          // This is a temporary representation of a task item.
-          // We will create a dedicated `TaskItem` widget in the next step.
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              // Checkbox to toggle task completion
-              leading: Checkbox(
-                value: task.isCompleted,
-                onChanged: (bool? value) {
-                  taskProvider.toggleTaskStatus(task);
-                },
-              ),
-              // Task title with a strikethrough if completed
-              title: Text(
-                task.title,
-                style: TextStyle(
-                  decoration: task.isCompleted
-                      ? TextDecoration.lineThrough
-                      : TextDecoration.none,
-                  color: task.isCompleted ? Colors.grey : null,
-                ),
-              ),
-              // Trailing icons for editing and deleting
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined, color: Colors.blueGrey),
-                    onPressed: () => _showTaskDialog(context, task: task),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                    onPressed: () => _showDeleteConfirmationDialog(context, taskProvider, task: task),
-                  ),
-                ],
-              ),
-              onLongPress: () => _showTaskDialog(context, task: task),
-            ),
-          );
+          // Using the dedicated TaskItem widget for each task.
+          return TaskItem(task: task);
         },
         childCount: tasks.length,
       ),
     );
   }
 
-  // Shows a dialog to add a new task or edit an existing one.
-  void _showTaskDialog(BuildContext context, {Task? task}) {
-    final taskProvider = Provider.of<TaskProvider>(context, listen: false);
-    final textController = TextEditingController(text: task?.title ?? '');
+  // Shows the panel for theme selection.
+  void _showThemePanel(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      // Using the dedicated ThemePanel widget.
+      builder: (context) => const ThemePanel(),
+    );
+  }
 
+  // Shows a dialog to add a new task.
+  void _showAddTaskDialog(BuildContext context, TaskProvider taskProvider) {
+    final textController = TextEditingController();
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(task == null ? 'افزودن وظیفه جدید' : 'ویرایش وظیفه'),
+          title: const Text('افزودن وظیفه جدید'),
           content: TextField(
             controller: textController,
             autofocus: true,
@@ -210,11 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () {
                 final title = textController.text;
                 if (title.isNotEmpty) {
-                  if (task == null) {
-                    taskProvider.addTask(title);
-                  } else {
-                    taskProvider.updateTaskTitle(task, title);
-                  }
+                  taskProvider.addTask(title);
                   Navigator.pop(context);
                 }
               },
@@ -226,14 +134,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Shows a confirmation dialog before deleting a task.
-  void _showDeleteConfirmationDialog(BuildContext context, TaskProvider taskProvider, {Task? task}) {
+  // Shows a confirmation dialog before deleting all tasks.
+  void _showDeleteAllConfirmationDialog(
+      BuildContext context, TaskProvider taskProvider) {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('تایید حذف'),
-          content: Text(task == null ? 'آیا از حذف تمام وظایف مطمئن هستید؟' : 'آیا این وظیفه حذف شود؟'),
+          content: const Text('آیا از حذف تمام وظایف مطمئن هستید؟'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -241,11 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             TextButton(
               onPressed: () {
-                if (task == null) {
-                  taskProvider.deleteAllTasks();
-                } else {
-                  taskProvider.deleteTask(task);
-                }
+                taskProvider.deleteAllTasks();
                 Navigator.pop(context);
               },
               child: const Text('بله'),
@@ -255,9 +160,40 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
-  
-  // A wrapper for the delete confirmation dialog for the "delete all" button.
-  void _showDeleteAllConfirmationDialog(BuildContext context, TaskProvider taskProvider) {
-      _showDeleteConfirmationDialog(context, taskProvider);
+
+  // Helper widget for the empty state.
+  Widget _buildEmptyState() {
+    return const SliverFillRemaining(
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.check_circle_outline, size: 80, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('هیچ وظیفه‌ای برای نمایش وجود ندارد!',
+                style: TextStyle(fontSize: 18, color: Colors.grey)),
+            Text('یک وظیفه جدید اضافه کنید',
+                style: TextStyle(fontSize: 14, color: Colors.grey)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper widget for the no search results state.
+  Widget _buildNoResultsState() {
+    return const SliverFillRemaining(
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off, size: 80, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('هیچ نتیجه‌ای یافت نشد!',
+                style: TextStyle(fontSize: 18, color: Colors.grey)),
+          ],
+        ),
+      ),
+    );
   }
 }
